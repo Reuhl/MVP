@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en-ZA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#1f3a2b">
+<title>Field Voice Log</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Field Voice Log v0.4 — New site button, switch category mid-recording; three record buttons (Species / Habitat / Notes); SANBI checklist + Red List matching; learned names */
+:root{--green:#2e7d4f;--deep:#1f3a2b;--red:#d23c3c;--grey:#7d8580;--ochre:#d99a1e;--ink:#1b1f1c;--bg:#fff;--line:#d9ddd9;--soft:#f2f4f2}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);overflow:hidden}
+#map{position:fixed;inset:0;z-index:0}
+.leaflet-top{top:62px}
+#top{position:fixed;top:0;left:0;right:0;z-index:500;display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--deep);color:#fff}
+#proj{flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{padding:4px 10px;border-radius:99px;font-size:13px;font-weight:600;background:#555;white-space:nowrap}
+.chip.good{background:#2e7d4f}.chip.ok{background:#b07a12}.chip.bad{background:#b03030}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;min-height:44px;padding:0 14px;background:var(--soft);color:var(--ink);font-weight:600}
+button:focus-visible{outline:3px solid #6aa9ff;outline-offset:2px}
+button:disabled{opacity:.4}
+#menuBtn{background:#ffffff22;color:#fff}
+#newSiteBtn{background:#fff;color:var(--deep);white-space:nowrap}
+#bottom{position:fixed;left:0;right:0;bottom:0;z-index:500;padding:8px 12px calc(12px + env(safe-area-inset-bottom));display:grid;gap:8px;pointer-events:none}
+#bottom>*{pointer-events:auto}
+#live{background:#000000c0;color:#fff;border-radius:12px;padding:8px 12px;font-size:15px;display:none;max-height:30vh;overflow:auto}
+#live.show{display:block}#live b{color:#ffd36b}
+.status{display:flex;align-items:center;gap:8px;background:#fffffff2;border-radius:12px;padding:6px 6px 6px 12px;box-shadow:0 2px 8px #0004}
+.status #stTxt{flex:1;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status #stTxt::before{content:'';display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--grey);margin-right:8px;vertical-align:-1px}
+.status.on #stTxt::before{background:var(--green)}
+#finBtn{background:var(--deep);color:#fff;min-height:40px}
+.recrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.recb{min-height:86px;border-radius:16px;color:#fff;font-size:18px;box-shadow:0 3px 12px #0005;border:3px solid #fff;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;padding:0 4px}
+.recb small{font-size:12px;font-weight:500;opacity:.92}
+#bSp{background:#2e7d4f}#bHab{background:#8a5a2b}#bNote{background:#2f6690}
+.recb.rec{background:var(--red)!important;animation:pulse 1.2s infinite}
+.recb.off{opacity:.35}
+.tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tools button{background:#fffffff0;box-shadow:0 2px 8px #0004;font-size:14px;min-height:40px}
+#trackBtn.on{background:var(--ochre);color:#fff}
+@keyframes pulse{50%{box-shadow:0 0 0 10px #d23c3c44}}
+@media(prefers-reduced-motion:reduce){.recb.rec{animation:none}}
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:900;background:var(--bg);border-radius:16px 16px 0 0;box-shadow:0 -4px 24px #0005;max-height:85vh;overflow:auto;padding:14px 14px calc(20px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .2s}
+#sheet.open{transform:none}
+#sheet h2{margin:0 0 4px;font-size:21px}
+#sheet h3{margin:18px 0 6px;font-size:16px}
+.meta{font-size:13px;color:#59615c}
+.close{float:right;margin-left:8px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+th{background:var(--soft);font-size:13px;white-space:nowrap}
+td[contenteditable]{min-width:90px;background:#fffdf3}
+td.sp{color:#59615c}
+tr.flag td{background:#fff1e6}
+td.x{white-space:nowrap}td.x button{min-height:34px;padding:0 10px;margin:1px}
+.pickb{background:var(--ochre);color:#fff}.delb{background:#fbe9e9;color:#a02020}
+textarea,input[type=text],input[type=search],select{width:100%;font:16px/1.4 inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff}
+textarea{min-height:90px}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.primary{background:var(--green);color:#fff}.danger{background:#fbe9e9;color:#a02020}
+.note{padding:6px 0;border-bottom:1px solid var(--line);display:flex;gap:8px;justify-content:space-between;align-items:center}
+.cand{display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 12px;line-height:1.3}
+.cand i{font-size:16px}.cand span{display:block;font-size:13px;font-weight:400;color:#59615c}
+.pin{background:var(--deep);color:#fff;border:2px solid #fff;border-radius:14px;padding:2px 8px;font-size:12px;font-weight:700;white-space:nowrap;box-shadow:0 1px 4px #0007;transform:translate(-50%,-50%);display:inline-block}
+.pin.on{background:var(--green)}
+#toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:1000;background:#222;color:#fff;padding:8px 14px;border-radius:10px;font-size:14px;display:none;max-width:90vw}
+#warn{display:none;background:#b03030;color:#fff;padding:8px 12px;font-size:14px;position:fixed;top:56px;left:0;right:0;z-index:600}
+.help li{margin-bottom:6px}
+.plist button{width:100%;text-align:left;margin-bottom:6px}.plist button.cur{background:#dcefe3}
+label.chk{display:flex;gap:8px;align-items:center;margin:8px 0;font-size:15px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="top"><button id="newSiteBtn">New site</button><div id="proj">Project</div><div id="gps" class="chip">GPS …</div><button id="menuBtn" aria-label="Menu">Menu</button></div>
+<div id="warn"></div>
+<div id="toast"></div>
+<div id="bottom">
+  <div id="live"></div>
+  <div class="status" id="status"><span id="stTxt">No active site</span><button id="finBtn" disabled>Finalise site</button></div>
+  <div class="recrow">
+    <button class="recb" id="bSp" data-type="species">Species<small>tap to record</small></button>
+    <button class="recb" id="bHab" data-type="habitat">Habitat<small>tap to record</small></button>
+    <button class="recb" id="bNote" data-type="note">Notes<small>tap to record</small></button>
+  </div>
+  <div class="tools"><button id="trackBtn">Track off</button><button id="typeBtn">Type</button><button id="centreBtn">Centre</button></div>
+</div>
+<div id="sheet" role="dialog" aria-modal="true"></div>
+
+<script>
+{
+/* ---------- storage ---------- */
+const KEY='fvl_v1',AKEY='fvl_aliases',REF_URL='sa-plants.json';
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+let db=(()=>{try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.projects)return d}catch(e){}return{projects:[],active:null}})();
+let aliases=(()=>{try{return JSON.parse(localStorage.getItem(AKEY))||{}}catch(e){return{}}})(); // normPhrase -> {full, common:bool}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Could not save – storage full or blocked. Export a backup now.')}}
+function saveAliases(){try{localStorage.setItem(AKEY,JSON.stringify(aliases))}catch(e){}}
+function newProject(name){const p={id:uid(),name:name||('Project '+new Date().toISOString().slice(0,10)),created:new Date().toISOString(),sites:[],records:[],notes:[],tracks:[],checklist:[],prov:-1,activeSite:null,activeTrack:null};db.projects.push(p);db.active=p.id;save();return p}
+const P=()=>db.projects.find(p=>p.id===db.active);
+if(!P())newProject();
+db.projects.forEach(p=>{if(p.prov==null)p.prov=-1});
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+const site=()=>{const p=P();return p.sites.find(s=>s.id===p.activeSite)||null};
+const track=()=>{const p=P();return p.tracks.find(t=>t.id===p.activeTrack)||null};
+
+/* IndexedDB for the large reference list */
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open('fvl',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function idbGet(k){const d=await idb();return new Promise(res=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>res(null)})}
+async function idbSet(k,v){const d=await idb();return new Promise(res=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=()=>res(true);t.onerror=()=>res(false)})}
+
+/* ---------- helpers ---------- */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cap=s=>{s=s.trim();return s.charAt(0).toUpperCase()+s.slice(1)};
+const now=()=>new Date().toISOString();
+const pt=at=>({lat:at?at.lat:null,lng:at?at.lng:null,acc:at?at.acc:null,time:now()});
+const fmtT=iso=>iso?new Date(iso).toLocaleString('en-ZA',{dateStyle:'short',timeStyle:'short'}):'';
+const fmtC=(la,ln)=>la==null?'no fix':`${la.toFixed(6)}, ${ln.toFixed(6)}`;
+function dist(a,b){const R=6371000,r=Math.PI/180,dLa=(b[0]-a[0])*r,dLn=(b[1]-a[1])*r;const h=Math.sin(dLa/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dLn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+const trackLen=t=>t.pts.reduce((s,p,i)=>i?s+dist(t.pts[i-1],p):0,0);
+let tt;function toast(m,ms){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(tt);tt=setTimeout(()=>t.style.display='none',ms||3500)}
+if(!window.isSecureContext){$('warn').style.display='block';$('warn').textContent='This page must be opened over https:// for GPS and microphone to work.'}
+const PROVS=['Western Cape','Eastern Cape','Northern Cape','Free State','KwaZulu-Natal','Gauteng','Limpopo','Mpumalanga','North West'];
+
+/*MATCH-START*/
+/* ---------- reference list and matching ---------- */
+const norm=s=>String(s||'').toLowerCase().replace(/×/g,' ').replace(/\b(subsp|ssp|var|forma|f)\b\.?/g,' ').replace(/[^a-z\s-]/g,' ').replace(/-/g,' ').replace(/\s+/g,' ').trim();
+const BUF=[new Int32Array(64),new Int32Array(64)];
+function lev(a,b,max){const m=a.length,n=b.length;if(Math.abs(m-n)>max)return max+1;if(n>62||m>62)return max+1;let prev=BUF[0],cur=BUF[1];for(let j=0;j<=n;j++)prev[j]=j;
+  for(let i=1;i<=m;i++){cur[0]=i;let lo=i;const ca=a.charCodeAt(i-1);for(let j=1;j<=n;j++){const v=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(ca===b.charCodeAt(j-1)?0:1));cur[j]=v;if(v<lo)lo=v}if(lo>max)return max+1;const t=prev;prev=cur;cur=t}return prev[n]}
+function hist(s){const h=new Uint8Array(26);for(let i=0;i<s.length;i++){const c=s.charCodeAt(i)-97;if(c>=0&&c<26&&h[c]<255)h[c]++}return h}
+let REF={src:'',T:[],K:[],byFull:new Map(),EX:new Map()}; // T: {name,full,family,origin,prov,rl,common,custom}
+function buildIndex(ref,custom){
+  const T=[],K=[],byFull=new Map();
+  const add=(t)=>{if(byFull.has(t.full))return byFull.get(t.full);byFull.set(t.full,T.length);T.push(t);return T.length-1};
+  if(ref)ref.taxa.forEach(x=>add({name:x[0],full:x[1],family:x[2],origin:x[3],prov:x[4],rl:x[5],common:'',custom:false}));
+  const key=(k,t,via)=>{const n=norm(k);if(n){const sq=n.replace(/ /g,'');K.push({k:n,s:sq,h:hist(sq),t,via})}};
+  T.forEach((t,i)=>key(t.name,i,'sci'));
+  if(ref)ref.syn.forEach(([n,i])=>key(n,i,'syn'));
+  (custom||[]).forEach(c=>{if(!c.scientific&&!c.common)return;let i=byFull.has(c.scientific)?byFull.get(c.scientific):null;
+    if(i==null){const hit=K.find(k=>k.k===norm(c.scientific)&&(k.via==='sci'||k.via==='syn'));if(hit)i=hit.t}
+    if(i==null){i=add({name:c.scientific||c.common,full:c.scientific||c.common,family:c.family||'',origin:'',prov:'',rl:c.status||'',common:c.common||'',custom:true});key(T[i].name,i,'sci')}
+    else{const t=T[i];if(c.common&&!t.common)t.common=c.common;if(c.status&&!t.rl)t.rl=c.status;if(c.family&&!t.family)t.family=c.family}
+    String(c.common||'').split(/[;\/,]/).forEach(cn=>key(cn,i,'common'))});
+  const EX=new Map();K.forEach(k=>{if(!EX.has(k.k))EX.set(k.k,k)});REF={src:ref?ref.source:'',T,K,byFull,EX};applyAliasCommons()}
+function applyAliasCommons(){for(const [ph,a] of Object.entries(aliases)){const i=REF.byFull.get(a.full);if(i!=null&&a.common&&!REF.T[i].common)REF.T[i].common=a.label||cap(ph)}}
+function inProv(t,prov){return prov<0||!t.prov||(t.prov[prov]&&t.prov[prov]!=='0')}
+/* Returns {pick, via, cands:[{i,score,via}]} */
+function identify(spoken,prov){
+  const q=norm(spoken),qs=q.replace(/ /g,'');if(!q)return{pick:null,cands:[]};
+  const al=aliases[q];if(al&&REF.byFull.has(al.full)){const i=REF.byFull.get(al.full);return{pick:i,via:'learned',cands:[{i,score:1,via:'learned'}]}}
+  const ex=REF.EX.get(q);if(ex){const exact=REF.K.filter(k=>k.k===q).map(k=>({i:k.t,score:1,via:k.via}));if(exact.length===1||new Set(exact.map(e=>e.i)).size===1)return{pick:exact[0].i,via:exact[0].via,cands:exact.slice(0,1)}}
+  const best=new Map(),qh=hist(qs),ql=qs.length;
+  for(const k of REF.K){const L=Math.max(ql,k.s.length),max=Math.max(2,Math.floor(L*0.35));if(Math.abs(ql-k.s.length)>max)continue;
+    let l1=0;const h=k.h;for(let c=0;c<26;c++){const d=qh[c]-h[c];l1+=d<0?-d:d}if(l1>2*max)continue;
+    const d=k.k===q?0:lev(qs,k.s,max);if(d>max)continue;let sc=1-d/L;
+    const t=REF.T[k.t];if(prov>=0&&inProv(t,prov))sc+=0.03;const prev=best.get(k.t);if(!prev||sc>prev.score)best.set(k.t,{i:k.t,score:sc,via:k.via})}
+  const c=[...best.values()].sort((a,b)=>b.score-a.score).slice(0,5);
+  const top=c[0],sec=c[1];
+  const sure=top&&(top.score>=1||(top.score>=0.9&&(!sec||top.score-sec.score>=0.06)));
+  return{pick:sure?top.i:null,via:sure?top.via:'',cands:c}}
+function search(q,prov,n){q=norm(q);if(!q)return[];const out=new Map();
+  for(const k of REF.K){if(k.k.startsWith(q)||k.k.includes(' '+q)){if(!out.has(k.t))out.set(k.t,{i:k.t,score:k.k.startsWith(q)?2:1.5,via:k.via});if(out.size>60)break}}
+  let r=[...out.values()];if(r.length<5)r=r.concat(identify(q,prov).cands.filter(c=>!out.has(c.i)));
+  return r.sort((a,b)=>b.score-a.score||(inProv(REF.T[b.i],prov)-inProv(REF.T[a.i],prov))).slice(0,n||15)}
+/*MATCH-END*/
+
+function setTaxon(r,i,via){const t=REF.T[i];r.family=t.family;r.scientific=t.name;r.full=t.full;r.origin=t.origin;r.status=t.rl;r.common=t.common||r.common||'';r.via=via;r.flag=false;r.cands=[];
+  if(via==='learned'){const a=aliases[norm(r.spoken)];if(a&&a.common)r.common=a.label||cap(r.spoken)}
+  if(via==='common')r.common=r.common||cap(r.spoken)}
+function applyMatch(r){if(r.via==='manual')return r;if(!REF.T.length){r.flag=true;r.cands=[];return r}
+  const res=identify(r.spoken,P().prov);
+  if(res.pick!=null)setTaxon(r,res.pick,res.via);
+  else{Object.assign(r,{family:'',scientific:'',full:'',origin:'',status:'',via:'',flag:true});r.cands=res.cands.slice(0,3).map(c=>REF.T[c.i].full)}
+  return r}
+async function reloadRefFromServer(){try{const res=await fetch(REF_URL,{cache:'no-cache'});if(!res.ok)throw 0;const raw=await res.text();const ref=JSON.parse(raw);await idbSet('ref',raw);currentRef=ref;buildIndex(ref,P().checklist);toast('Reference list updated');showMenu()}catch(e){toast('Could not download '+REF_URL)}}
+
+/* ---------- map ---------- */
+const map=L.map('map',{zoomControl:false}).setView([-25.75,28.19],12);
+const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Imagery © Esri'});
+const topo=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'© OpenTopoMap © OpenStreetMap'});
+const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
+sat.addTo(map);L.control.layers({Satellite:sat,Topographic:topo,Street:osm},null,{position:'topright'}).addTo(map);
+const layer=L.layerGroup().addTo(map);
+let me=null,meAcc=null,centred=false;
+function render(){
+  const p=P();layer.clearLayers();$('proj').textContent=p.name;
+  p.tracks.forEach(t=>{if(t.pts.length>1)L.polyline(t.pts.map(x=>[x[0],x[1]]),{color:t.id===p.activeTrack?'#ffb000':'#ff7a00',weight:5,opacity:.9}).on('click',()=>showTrack(t.id)).addTo(layer)});
+  p.records.forEach(r=>{if(r.lat!=null)L.circleMarker([r.lat,r.lng],{radius:4,color:'#fff',weight:1,fillColor:r.flag?'#ff7a00':'#ffd36b',fillOpacity:1}).on('click',()=>showSite(r.siteId)).addTo(layer)});
+  p.sites.forEach(s=>{if(s.lat==null)return;L.marker([s.lat,s.lng],{icon:L.divIcon({className:'',html:`<span class="pin ${s.id===p.activeSite?'on':''}">${esc(s.name)}</span>`,iconSize:[0,0]})}).on('click',()=>showSite(s.id)).addTo(layer)});
+  setBtn()}
+
+/* ---------- GPS ---------- */
+let fix=null;
+function onFix(pos){fix={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy)};
+  const g=$('gps');g.textContent='± '+fix.acc+' m';g.className='chip '+(fix.acc<=10?'good':fix.acc<=30?'ok':'bad');
+  const ll=[fix.lat,fix.lng];
+  if(!me){me=L.circleMarker(ll,{radius:8,color:'#fff',weight:3,fillColor:'#1e88ff',fillOpacity:1}).addTo(map);meAcc=L.circle(ll,{radius:fix.acc,color:'#1e88ff',weight:1,fillOpacity:.1}).addTo(map)}
+  else{me.setLatLng(ll);meAcc.setLatLng(ll).setRadius(fix.acc)}
+  if(!centred){map.setView(ll,17);centred=true}
+  const s=site();if(s&&s.lat==null){Object.assign(s,{lat:fix.lat,lng:fix.lng,acc:fix.acc});save();render()}
+  trackPoint()}
+if('geolocation' in navigator)navigator.geolocation.watchPosition(onFix,e=>{$('gps').textContent='GPS: '+(e.code===1?'denied':'no fix');$('gps').className='chip bad'},{enableHighAccuracy:true,maximumAge:2000,timeout:30000});
+else $('gps').textContent='No GPS';
+$('centreBtn').onclick=()=>{if(fix)map.setView([fix.lat,fix.lng],Math.max(map.getZoom(),17));else toast('No GPS fix yet')};
+
+/* ---------- screen wake ---------- */
+let lock=null;
+async function wake(){try{if('wakeLock' in navigator&&!lock){lock=await navigator.wakeLock.request('screen');lock.addEventListener('release',()=>lock=null)}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&(site()||track()))wake()});
+
+/* ---------- sites ---------- */
+function createSite(at,name){const p=P();const n=p.sites.length+1;
+  const s={id:uid(),name:name||('Site '+String(n).padStart(2,'0')),lat:at?at.lat:null,lng:at?at.lng:null,acc:at?at.acc:null,start:now(),end:null,habitat:[]};
+  p.sites.push(s);p.activeSite=s.id;save();return s}
+function finalise(){const p=P(),s=site();if(!s)return;s.end=now();p.activeSite=null;save();render();toast(s.name+' finalised')}
+const hasContent=s=>{const p=P();return s.habitat.length||p.records.some(r=>r.siteId===s.id)||p.notes.some(n=>n.siteId===s.id)};
+
+/* ---------- parsing ---------- */
+/* The button decides the category. Species recordings are split on "next" and "and". */
+const clean=text=>text.replace(/[,.;:!?]/g,' ').replace(/\b(um+|uh+|er+)\b/gi,' ').replace(/\s+/g,' ').trim();
+function newRecord(s,name,at){return applyMatch({id:uid(),siteId:s.id,spoken:cap(name),family:'',scientific:'',full:'',common:'',origin:'',status:'',via:'',flag:false,cands:[],...pt(at)})}
+function processText(text,at,type){
+  const body=clean(text||'');if(!body){toast('Nothing heard – try again');return}
+  const p=P();let s=site();if(!s){s=createSite(at);toast(s.name+' started – rename it in the site panel')}
+  let msg;
+  if(type==='species'){let n=0,f=0;body.split(/\b(?:next|and)\b/i).map(x=>x.trim()).filter(Boolean).forEach(x=>{const r=newRecord(s,x,at);p.records.push(r);n++;if(r.flag)f++});msg=n+' species'+(f?' ('+f+' to check)':'')}
+  else if(type==='habitat'){s.habitat.push({text:cap(body),...pt(at)});msg='habitat added'}
+  else{p.notes.push({id:uid(),siteId:s.id,text:cap(body),...pt(at)});msg='note added'}
+  save();render();toast(s.name+': '+msg)}
+
+/* ---------- speech ---------- */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null,recording=false,busy=false,finals=[],interim='',recFix=null,recType='species';
+function addFinal(t){t=t.trim();if(!t)return;const last=finals[finals.length-1],lt=t.toLowerCase();
+  if(last&&lt.startsWith(last.toLowerCase()))finals[finals.length-1]=t;else if(last&&last.toLowerCase().startsWith(lt))return;else finals.push(t)}
+function showLive(){const l=$('live');if(recording){l.classList.add('show');l.innerHTML='<b>Listening ('+({species:'species',habitat:'habitat',note:'notes'}[recType])+')…</b> '+esc(finals.join(' '))+' <i>'+esc(interim)+'</i>'}else l.classList.remove('show')}
+function startRec(type){
+  if(!SR){toast('Voice not supported in this browser – use Chrome, or tap Type');return}
+  finals=[];interim='';recFix=fix;recording=true;recType=type;
+  rec=new SR();rec.lang='en-ZA';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;
+  rec.onresult=e=>{interim='';for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)addFinal(r[0].transcript);else interim+=' '+r[0].transcript}showLive()};
+  rec.onerror=e=>{if(e.error==='no-speech'||e.error==='aborted')return;
+    if(e.error==='network')toast('No signal – voice needs data. Tap Type instead.');
+    else if(e.error==='not-allowed')toast('Microphone permission denied');else toast('Voice error: '+e.error)};
+  rec.onend=()=>{if(recording){try{rec.start()}catch(x){}}};
+  try{rec.start()}catch(x){}
+  showLive();setBtn();wake()}
+let nextType=null,afterStop=null;
+function stopRec(then){recording=false;busy=true;nextType=typeof then==='string'?then:null;afterStop=typeof then==='function'?then:null;setBtn();try{rec.stop()}catch(x){}
+  const type=recType,at=recFix||fix;
+  setTimeout(()=>{const text=(finals.join(' ')+' '+interim).trim();interim='';busy=false;showLive();
+    if(text)processText(text,at,type);else setBtn();
+    const nt=nextType,cb=afterStop;nextType=null;afterStop=null;if(nt)startRec(nt);if(cb)cb()},800)}
+const RB={species:'bSp',habitat:'bHab',note:'bNote'},RL={species:'Species',habitat:'Habitat',note:'Notes'};
+function setBtn(){const s=site();
+  for(const [t,id] of Object.entries(RB)){const b=$(id);const isRec=(recording||busy)&&recType===t;
+    const isNext=busy&&nextType===t;b.classList.toggle('rec',isRec||isNext);b.classList.toggle('off',busy&&!isRec&&!isNext);
+    b.innerHTML=RL[t]+'<small>'+(isNext?'starting…':isRec?(busy?'saving…':'tap to stop'):(recording?'tap to switch':(s?'tap to record':'starts new site')))+'</small>'}
+  $('status').classList.toggle('on',!!s);$('stTxt').textContent=s?s.name+' active':'No active site';
+  $('finBtn').disabled=!s||recording||busy;
+  const t=$('trackBtn');t.classList.toggle('on',!!track());t.textContent=track()?'Track on':'Track off'}
+document.querySelectorAll('.recb').forEach(b=>b.onclick=()=>{const type=b.dataset.type;if(busy)return;
+  if(recording){if(type===recType)stopRec();else stopRec(type);return}
+  if(!site()){if(!fix)toast('No GPS fix yet – site will take the first fix');const s=createSite(fix);render();toast(s.name+' started – rename it in the site panel')}
+  startRec(type)});
+/* New site: save/close the current site, then ask for a name */
+function newSiteFlow(){if(busy)return;if(recording){stopRec(newSiteFlow);return}
+  const p=P(),cur=site();if(cur)finalise();
+  const def='Site '+String(p.sites.length+1).padStart(2,'0');
+  open(`<h2>New site</h2>${cur?`<div class="meta">${esc(cur.name)} saved and closed.</div>`:''}
+  <h3>Site name or number</h3><input type="text" id="nsName" value="${esc(def)}" autocomplete="off">
+  <div class="meta">Position: ${fix?fmtC(fix.lat,fix.lng)+' (± '+fix.acc+' m)':'waiting for GPS – the first fix will be used'}</div>
+  <div class="btns"><button class="primary" data-a="nsCreate">Start site</button><button data-a="close">Cancel</button></div>`);
+  setTimeout(()=>{const i=$('nsName');if(i){i.focus();i.select()}},250)}
+$('newSiteBtn').onclick=newSiteFlow;
+$('finBtn').onclick=finalise;
+
+/* ---------- tracks ---------- */
+$('trackBtn').onclick=()=>{const p=P(),t=track();
+  if(!t){const n={id:uid(),name:'Track '+String(p.tracks.length+1).padStart(2,'0'),start:now(),end:null,pts:[]};p.tracks.push(n);p.activeTrack=n.id;wake();toast('Track recording – keep the screen on')}
+  else{t.end=now();p.activeTrack=null;toast(t.name+' saved ('+(trackLen(t)/1000).toFixed(2)+' km)')}
+  save();render()};
+let lastDraw=0;
+function trackPoint(){const t=track();if(!t||!fix||fix.acc>50)return;const ll=[+fix.lat.toFixed(6),+fix.lng.toFixed(6)];const last=t.pts[t.pts.length-1];
+  if(!last||dist(last,ll)>=5){t.pts.push([ll[0],ll[1],Date.now()]);save();if(Date.now()-lastDraw>3000){lastDraw=Date.now();render()}}}
+
+/* ---------- sheet views ---------- */
+const sheet=$('sheet');
+function open(html){sheet.innerHTML='<button class="close" data-a="close">Close</button>'+html;sheet.classList.add('open');sheet.scrollTop=0}
+function closeSheet(){sheet.classList.remove('open')}
+let curSite=null,curRec=null;
+function showSite(id){const p=P(),s=p.sites.find(x=>x.id===id);if(!s)return;curSite=id;
+  const recs=p.records.filter(r=>r.siteId===id),notes=p.notes.filter(n=>n.siteId===id),nf=recs.filter(r=>r.flag).length;
+  open(`<h2>${esc(s.name)}</h2>
+  <div class="meta">${fmtC(s.lat,s.lng)}${s.acc!=null?' (± '+s.acc+' m)':''} · ${fmtT(s.start)}${s.end?' – '+fmtT(s.end):' · <b>active</b>'}</div>
+  <h3>Species (${recs.length}${nf?', '+nf+' to check':''})</h3>
+  <div class="scroll"><table><thead><tr><th>Family</th><th>Scientific name</th><th>Common name</th><th>Origin</th><th>Status</th><th>As spoken</th><th></th></tr></thead><tbody>
+  ${recs.map(r=>`<tr class="${r.flag?'flag':''}"><td>${esc(r.family)}</td><td><i>${esc(r.scientific)}</i></td><td contenteditable data-id="${r.id}" data-f="common">${esc(r.common)}</td><td>${esc(r.origin)}</td><td>${esc(r.status)}</td><td class="sp">${esc(r.spoken)}</td><td class="x"><button class="pickb" data-a="pick" data-id="${r.id}">${r.flag?'Choose':'Change'}</button><button class="delb" data-a="delrec" data-id="${r.id}">✕</button></td></tr>`).join('')||'<tr><td colspan="7">No species yet</td></tr>'}
+  </tbody></table></div>
+  <div class="meta">Orange rows need a species chosen. Common name cells can be edited; your edit is remembered for next time.</div>
+  <div class="btns"><input type="text" id="addSp" placeholder="Add species (separate with 'next' or 'and')"><button class="primary" data-a="addsp">Add species</button></div>
+  <h3>Habitat</h3><textarea id="hab">${esc(s.habitat.map(h=>h.text).join('\n'))}</textarea>
+  <h3>Notes (${notes.length})</h3>${notes.map(n=>`<div class="note"><span>${esc(n.text)} <span class="meta">${fmtT(n.time)}</span></span><span><button data-a="note2sp" data-id="${n.id}">→ Species</button> <button class="danger" data-a="delnote" data-id="${n.id}">✕</button></span></div>`).join('')||'<div class="meta">No notes</div>'}
+  <h3>Site</h3><input type="text" id="sname" value="${esc(s.name)}">
+  <div class="btns"><button class="primary" data-a="savesite">Save</button>
+  ${s.id===p.activeSite?'':'<button data-a="reopen">Reopen site</button>'}
+  ${fix?'<button data-a="moveSite">Move pin to my position</button>':''}
+  <button class="danger" data-a="delsite">Delete site</button></div>`)}
+function candBtn(i,label){const t=REF.T[i];return`<button class="cand" data-a="choose" data-i="${i}"><i>${esc(t.name)}</i>${t.common?' – '+esc(t.common):''}<span>${esc([t.family,t.origin,t.rl,label].filter(Boolean).join(' · '))}</span></button>`}
+function showPick(id){const p=P(),r=p.records.find(x=>x.id===id);if(!r)return;curRec=id;
+  const cands=(r.cands&&r.cands.length?r.cands.map(f=>REF.byFull.get(f)).filter(x=>x!=null):identify(r.spoken,p.prov).cands.map(c=>c.i)).slice(0,3);
+  const looksSci=cands.length&&identify(r.spoken,-1).cands.some(c=>c.via!=='common'&&c.score>0.85);
+  open(`<h2>Choose species</h2><div class="meta">You said: <b>${esc(r.spoken)}</b>${p.prov>=0?' · Filter favours '+PROVS[p.prov]:''}</div>
+  <h3>Best matches</h3>${cands.map(i=>candBtn(i)).join('')||'<div class="meta">No close matches. Search below.</div>'}
+  <h3>Search</h3><input type="search" id="q" placeholder="Type part of a scientific or common name" value="">
+  <div id="res"></div>
+  <label class="chk"><input type="checkbox" id="asCommon" ${looksSci?'':'checked'}> Save "${esc(r.spoken)}" as the common name</label>
+  <div class="meta">Your choice is remembered: next time you say "${esc(r.spoken)}" it is filled in automatically.</div>
+  <div class="btns"><button data-a="keepun">Leave unmatched</button><button data-a="back">Back to site</button></div>`)}
+function showTrack(id){const p=P(),t=p.tracks.find(x=>x.id===id);if(!t)return;
+  const t0=new Date(t.start),t1=t.end?new Date(t.end):new Date();
+  const ss=p.sites.filter(s=>new Date(s.start)>=t0&&new Date(s.start)<=t1);
+  open(`<h2>${esc(t.name)}</h2><div class="meta">${fmtT(t.start)} – ${t.end?fmtT(t.end):'recording'} · ${(trackLen(t)/1000).toFixed(2)} km · ${t.pts.length} points</div>
+  <h3>Sites recorded during this track</h3>${ss.map(s=>`<div class="note"><span>${esc(s.name)} – ${p.records.filter(r=>r.siteId===s.id).length} species</span><button data-a="gosite" data-id="${s.id}">Open</button></div>`).join('')||'<div class="meta">None</div>'}
+  <div class="btns"><button class="danger" data-a="deltrack" data-id="${t.id}">Delete track</button></div>`)}
+function showType(){open(`<h2>Type an entry</h2><div class="meta">For species, separate names with "next", "and" or commas.</div>
+  <textarea id="typed" placeholder="e.g. red grass, sickle bush"></textarea><div class="btns"><button class="primary" data-a="typed" data-type="species">Add as species</button><button data-a="typed" data-type="habitat">Add as habitat</button><button data-a="typed" data-type="note">Add as note</button></div>`)}
+function showMenu(){const p=P(),nAl=Object.keys(aliases).length;
+  open(`<h2>Project</h2><input type="text" id="pname" value="${esc(p.name)}"><div class="btns"><button class="primary" data-a="savep">Rename</button><button data-a="newp">New project</button></div>
+  <div class="meta">${p.sites.length} sites · ${p.records.length} species records (${p.records.filter(r=>r.flag).length} to check) · ${p.tracks.length} tracks</div>
+  <h3>Province filter</h3><select id="prov"><option value="-1">All of South Africa</option>${PROVS.map((n,i)=>`<option value="${i}" ${p.prov===i?'selected':''}>${n}</option>`).join('')}</select>
+  <div class="meta">Matches occurring in this province are preferred.</div>
+  <h3>Export</h3><div class="btns"><button class="primary" data-a="xlsx">Excel (.xlsx)</button><button data-a="share">Share Excel…</button><button data-a="csv">CSV</button><button data-a="kml">KML (Google Earth)</button><button data-a="geojson">GeoJSON (QGIS)</button><button data-a="backup">Backup (.json)</button></div>
+  <h3>Reference list</h3><div class="meta">${REF.T.length?esc(REF.src)+' – '+REF.T.length.toLocaleString('en-ZA')+' taxa':'Not loaded'}</div>
+  <div class="btns"><button data-a="reloadref">Download again</button><button data-a="rematch">Re-match all records</button></div>
+  <div class="meta" style="margin-top:6px">Or load the reference file (sa-plants.json) from the phone:</div><input type="file" id="refFile" accept=".json">
+  <h3>Learned names (${nAl})</h3><div class="meta">Names you have chosen or corrected. Shared across projects. Export to share with colleagues.</div>
+  <div class="btns"><button data-a="expal">Export learned names</button></div><div class="meta" style="margin-top:6px">Import learned names (.csv):</div><input type="file" id="alFile" accept=".csv">
+  <h3>Extra checklist (this project)</h3><div class="meta">${p.checklist.length?p.checklist.length+' rows loaded':'None'}. Optional CSV/Excel with Family, Scientific name, Common name, Status – adds common names or other groups (e.g. fauna).</div>
+  <input type="file" id="clFile" accept=".csv,.xlsx,.xls">
+  <h3>Switch project</h3><div class="plist">${db.projects.map(x=>`<button class="${x.id===p.id?'cur':''}" data-a="swp" data-id="${x.id}">${esc(x.name)} <span class="meta">(${x.sites.length} sites)</span></button>`).join('')}</div>
+  <h3>Restore a backup</h3><input type="file" id="bkFile" accept=".json">
+  <h3>How to record</h3><ul class="help">
+  <li><b>New site</b> (top left) saves and closes the current site and asks for the new site's name; the pin is placed at your position.</li>
+  <li>Tap <b>Species</b>, <b>Habitat</b> or <b>Notes</b> to record that category; tap the red button to stop, or tap another category to save and switch straight away.</li>
+  <li>Species: separate names with <b>"next"</b> or <b>"and"</b>.</li>
+  <li>Recording with no active site starts one automatically (Site 01, 02 …); rename it in the site panel.</li>
+  <li><b>Finalise site</b> closes the site without starting a new one – for driving between sites.</li></ul>
+  <div class="btns"><button class="danger" data-a="delp">Delete this project</button></div>`)}
+$('menuBtn').onclick=showMenu;$('typeBtn').onclick=showType;
+
+function learn(spoken,i,asCommon){const t=REF.T[i];const k=norm(spoken);if(!k)return;
+  if(k===norm(t.name)&&!asCommon)return;
+  aliases[k]={full:t.full,common:!!asCommon,label:asCommon?cap(spoken):''};
+  if(asCommon&&!t.common)t.common=cap(spoken);saveAliases()}
+sheet.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id,p=P();
+  const s=p.sites.find(x=>x.id===curSite),r=p.records.find(x=>x.id===curRec);
+  switch(a){
+  case'close':closeSheet();break;
+  case'nsCreate':{const nm=$('nsName').value.trim();const ns=createSite(fix,nm||null);closeSheet();render();toast(ns.name+' started');break}
+  case'delrec':p.records=p.records.filter(x=>x.id!==id);save();render();showSite(curSite);break;
+  case'pick':showPick(id);break;
+  case'choose':{const i=+b.dataset.i,asC=$('asCommon').checked;learn(r.spoken,i,asC);setTaxon(r,i,'picked');if(asC)r.common=cap(r.spoken);
+    p.records.forEach(x=>{if(x.flag&&norm(x.spoken)===norm(r.spoken))applyMatch(x)});save();render();showSite(r.siteId);break}
+  case'keepun':r.flag=false;r.via='manual';save();showSite(r.siteId);break;
+  case'back':showSite(r.siteId);break;
+  case'delnote':p.notes=p.notes.filter(n=>n.id!==id);save();showSite(curSite);break;
+  case'note2sp':{const n=p.notes.find(x=>x.id===id);p.notes=p.notes.filter(x=>x.id!==id);n.text.split(/\b(?:next|and)\b/i).map(x=>x.trim()).filter(Boolean).forEach(nm=>p.records.push(applyMatch({id:uid(),siteId:n.siteId,spoken:cap(nm),family:'',scientific:'',full:'',common:'',origin:'',status:'',via:'',flag:false,cands:[],lat:n.lat,lng:n.lng,acc:n.acc,time:n.time})));save();render();showSite(curSite);break}
+  case'addsp':{const v=$('addSp').value.trim();if(!v)return;v.split(/\b(?:next|and)\b|,/i).map(x=>x.trim()).filter(Boolean).forEach(n=>p.records.push(applyMatch({id:uid(),siteId:s.id,spoken:cap(n),family:'',scientific:'',full:'',common:'',origin:'',status:'',via:'',flag:false,cands:[],lat:s.lat,lng:s.lng,acc:s.acc,time:now()})));save();render();showSite(curSite);break}
+  case'savesite':s.name=$('sname').value.trim()||s.name;{const h=$('hab').value.trim();s.habitat=h?[{text:h,lat:s.lat,lng:s.lng,acc:s.acc,time:(s.habitat[0]||{}).time||now()}]:[]}save();render();toast('Saved');showSite(curSite);break;
+  case'reopen':if(site())finalise();s.end=null;p.activeSite=s.id;save();render();showSite(curSite);break;
+  case'moveSite':Object.assign(s,{lat:fix.lat,lng:fix.lng,acc:fix.acc});save();render();showSite(curSite);break;
+  case'delsite':if(!confirm('Delete '+s.name+' and all its records?'))return;p.sites=p.sites.filter(x=>x.id!==s.id);p.records=p.records.filter(x=>x.siteId!==s.id);p.notes=p.notes.filter(n=>n.siteId!==s.id);if(p.activeSite===s.id)p.activeSite=null;save();render();closeSheet();break;
+  case'gosite':showSite(id);break;
+  case'deltrack':if(!confirm('Delete this track?'))return;p.tracks=p.tracks.filter(t=>t.id!==id);if(p.activeTrack===id)p.activeTrack=null;save();render();closeSheet();break;
+  case'typed':{const v=$('typed').value.replace(/,/g,' next ');closeSheet();processText(b.dataset.type==='species'?v:$('typed').value,fix,b.dataset.type);break}
+  case'savep':p.name=$('pname').value.trim()||p.name;save();render();toast('Renamed');break;
+  case'newp':{if(recording)return;const n=prompt('New project name');if(n===null)return;const np=newProject(n.trim());np.prov=p.prov;save();buildIndex(currentRef,np.checklist);render();showMenu();break}
+  case'swp':if(recording)return;db.active=id;save();buildIndex(currentRef,P().checklist);render();showMenu();break;
+  case'delp':if(!confirm('Delete project "'+p.name+'" permanently? Export first!'))return;db.projects=db.projects.filter(x=>x.id!==p.id);if(!db.projects.length)newProject();else db.active=db.projects[0].id;save();buildIndex(currentRef,P().checklist);render();closeSheet();break;
+  case'rematch':{let n=0;p.records.forEach(x=>{if(x.via!=='picked'&&x.via!=='manual'){applyMatch(x);n++}});save();render();toast('Re-matched '+n+' records ('+p.records.filter(x=>x.flag).length+' to check)');showMenu();break}
+  case'reloadref':reloadRefFromServer();break;
+  case'expal':download(new Blob(['﻿'+toCSV([['Spoken name','Scientific name (full)','Is common name'],...Object.entries(aliases).map(([k,v])=>[v.label||k,v.full,v.common?'Yes':'No'])])],{type:'text/csv'}),'learned_names.csv');break;
+  case'xlsx':exportXlsx(false);break;case'share':exportXlsx(true);break;
+  case'csv':download(new Blob(['﻿'+toCSV(speciesRows())],{type:'text/csv'}),fname('csv'));break;
+  case'kml':download(new Blob([toKML()],{type:'application/vnd.google-earth.kml+xml'}),fname('kml'));break;
+  case'geojson':download(new Blob([JSON.stringify(toGeo(),null,1)],{type:'application/geo+json'}),fname('geojson'));break;
+  case'backup':download(new Blob([JSON.stringify(p)],{type:'application/json'}),fname('backup.json'));break;
+  }});
+sheet.addEventListener('keydown',e=>{if(e.target.id==='nsName'&&e.key==='Enter'){e.preventDefault();sheet.querySelector('[data-a=nsCreate]').click()}});
+let qT;
+sheet.addEventListener('input',e=>{if(e.target.id!=='q')return;clearTimeout(qT);qT=setTimeout(()=>{const v=e.target.value;$('res').innerHTML=v.trim().length<3?'':search(v,P().prov,12).map(c=>candBtn(c.i,c.via==='syn'?'via synonym':'')).join('')||'<div class="meta">Nothing found</div>'},250)});
+sheet.addEventListener('focusout',e=>{const c=e.target;if(!c.dataset||c.dataset.f!=='common')return;const r=P().records.find(x=>x.id===c.dataset.id);if(!r)return;const v=c.textContent.trim();if(v===r.common)return;r.common=v;
+  if(v&&r.full&&REF.byFull.has(r.full)){const i=REF.byFull.get(r.full);aliases[norm(v)]={full:r.full,common:true,label:v};REF.T[i].common=v;saveAliases();
+    P().records.forEach(x=>{if(x.full===r.full&&!x.common)x.common=v})}
+  save()});
+sheet.addEventListener('change',e=>{const el=e.target;
+  if(el.id==='prov'){P().prov=+el.value;save();toast('Province filter: '+(P().prov<0?'all of SA':PROVS[P().prov])+'. Tap Re-match to apply to existing records.');return}
+  const f=el.files&&el.files[0];if(!f)return;
+  if(el.id==='clFile')loadChecklist(f);
+  if(el.id==='refFile')f.text().then(async raw=>{const ref=JSON.parse(raw);if(!ref.taxa)throw 0;await idbSet('ref',raw);currentRef=ref;buildIndex(ref,P().checklist);toast('Reference list loaded');showMenu()}).catch(()=>toast('Not a valid reference file'));
+  if(el.id==='alFile')loadAliases(f);
+  if(el.id==='bkFile'){f.text().then(t=>{const d=JSON.parse(t);if(!d.sites)throw 0;d.id=uid();d.name=d.name+' (restored)';d.activeSite=null;d.activeTrack=null;if(d.prov==null)d.prov=-1;db.projects.push(d);db.active=d.id;save();buildIndex(currentRef,d.checklist);render();showMenu();toast('Backup restored')}).catch(()=>toast('Not a valid backup file'))}});
+
+/* ---------- imports ---------- */
+function readSheet(file,cb){const rd=new FileReader();rd.onload=()=>{try{const wb=XLSX.read(rd.result,{type:'array'});cb(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}))}catch(e){toast('Could not read file')}};rd.readAsArrayBuffer(file)}
+const col=(row,re)=>{const k=Object.keys(row).find(k=>re.test(k.toLowerCase()));return k?String(row[k]).trim():''};
+function loadChecklist(file){readSheet(file,rows=>{
+  const list=rows.map(r=>({family:col(r,/famil/),scientific:col(r,/scien|latin|taxon|species/),common:col(r,/common|english|vernac/),status:col(r,/status|nemba|tops|red/)})).filter(c=>c.scientific||c.common);
+  if(!list.length){toast('No usable rows – check the column headings');return}
+  const p=P();p.checklist=list;save();buildIndex(currentRef,list);p.records.forEach(x=>{if(x.flag)applyMatch(x)});save();render();toast(list.length+' rows loaded');showMenu()})}
+function loadAliases(file){readSheet(file,rows=>{let n=0;rows.forEach(r=>{const sp=col(r,/spoken/),full=col(r,/scien/),c=/^y/i.test(col(r,/common/));
+  if(sp&&full){aliases[norm(sp)]={full,common:c,label:c?sp:''};n++}});saveAliases();applyAliasCommons();toast(n+' learned names imported');showMenu()})}
+
+/* ---------- exports ---------- */
+const fname=ext=>P().name.replace(/[^\w\- ]+/g,'').replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.'+ext;
+function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000)}
+const sName=id=>(P().sites.find(s=>s.id===id)||{}).name||'';
+const matchLabel=r=>r.flag?'CHECK':({sci:'Scientific name',syn:'Synonym → accepted name',common:'Common name',learned:'Learned name',picked:'Chosen manually',manual:'Unmatched (kept)'}[r.via]||'');
+function speciesRows(){const p=P();const H=['Site','Latitude','Longitude','Accuracy (m)','Date','Time','Family','Scientific name','Scientific name with authority','Common name','Origin','Status (Red List)','As spoken','Match'];
+  return[H,...p.sites.flatMap(s=>p.records.filter(r=>r.siteId===s.id).map(r=>{const d=new Date(r.time);return[s.name,r.lat??s.lat,r.lng??s.lng,r.acc??s.acc,d.toLocaleDateString('en-ZA'),d.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'}),r.family,r.scientific,r.full,r.common,r.origin,r.status,r.spoken,matchLabel(r)]}))]}
+function siteRows(){const p=P();return[['Site','Latitude','Longitude','Accuracy (m)','Start','End','Habitat description','No. of species','Notes'],...p.sites.map(s=>[s.name,s.lat,s.lng,s.acc,fmtT(s.start),fmtT(s.end),s.habitat.map(h=>h.text).join(' '),p.records.filter(r=>r.siteId===s.id).length,p.notes.filter(n=>n.siteId===s.id).map(n=>n.text).join(' | ')])]}
+function matrixRows(){const p=P();const key=r=>(r.full||r.spoken).toLowerCase();const sp=[...new Map(p.records.map(r=>[key(r),r])).values()].sort((a,b)=>((a.family||'~')+(a.scientific||a.spoken)).localeCompare((b.family||'~')+(b.scientific||b.spoken)));
+  return[['Family','Scientific name','Common name','Origin','Status (Red List)',...p.sites.map(s=>s.name)],...sp.map(r=>[r.family,r.scientific||('['+r.spoken+' – CHECK]'),r.common,r.origin,r.status,...p.sites.map(s=>p.records.some(x=>x.siteId===s.id&&key(x)===key(r))?'x':'')])]}
+function exportXlsx(share){const p=P();const wb=XLSX.utils.book_new();
+  const add=(rows,name)=>{const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=rows[0].map(()=>({wch:18}));XLSX.utils.book_append_sheet(wb,ws,name)};
+  add(speciesRows(),'Species records');add(siteRows(),'Sites');add(matrixRows(),'Species x site');
+  add([['Site','Note','Latitude','Longitude','Time'],...p.notes.map(n=>[sName(n.siteId),n.text,n.lat,n.lng,fmtT(n.time)])],'Notes');
+  add([['Track','Start','End','Length (km)','Points'],...p.tracks.map(t=>[t.name,fmtT(t.start),fmtT(t.end),+(trackLen(t)/1000).toFixed(3),t.pts.length])],'Tracks');
+  add([['Source'],[REF.src||'No reference list loaded'],['Province filter: '+(p.prov<0?'All of South Africa':PROVS[p.prov])],['Exported '+fmtT(now())]],'Sources');
+  const buf=XLSX.write(wb,{bookType:'xlsx',type:'array'});const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  if(share&&navigator.canShare){const file=new File([blob],fname('xlsx'),{type:blob.type});if(navigator.canShare({files:[file]})){navigator.share({files:[file],title:p.name}).catch(()=>{});return}}
+  download(blob,fname('xlsx'))}
+const toCSV=rows=>rows.map(r=>r.map(v=>{v=v??'';v=String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\r\n');
+const spLabel=r=>(r.scientific||r.spoken)+(r.common?' ('+r.common+')':'')+(r.status?' ['+r.status+']':'');
+function toKML(){const p=P();const x=s=>esc(s);
+  const pm=p.sites.filter(s=>s.lat!=null).map(s=>{const recs=p.records.filter(r=>r.siteId===s.id);
+    const d=`<b>Habitat:</b> ${x(s.habitat.map(h=>h.text).join(' '))}<br><b>Species:</b><br>${recs.map(r=>x(spLabel(r))).join('<br>')}`;
+    return`<Placemark><name>${x(s.name)}</name><description><![CDATA[${d}]]></description><Point><coordinates>${s.lng},${s.lat},0</coordinates></Point></Placemark>`}).join('');
+  const tr=p.tracks.filter(t=>t.pts.length>1).map(t=>`<Placemark><name>${x(t.name)}</name><Style><LineStyle><color>ff007aff</color><width>4</width></LineStyle></Style><LineString><coordinates>${t.pts.map(q=>q[1]+','+q[0]+',0').join(' ')}</coordinates></LineString></Placemark>`).join('');
+  return`<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${x(p.name)}</name>${pm}${tr}</Document></kml>`}
+function toGeo(){const p=P();return{type:'FeatureCollection',features:[
+  ...p.sites.filter(s=>s.lat!=null).map(s=>({type:'Feature',geometry:{type:'Point',coordinates:[s.lng,s.lat]},properties:{kind:'site',site:s.name,accuracy_m:s.acc,start:s.start,end:s.end,habitat:s.habitat.map(h=>h.text).join(' '),species:p.records.filter(r=>r.siteId===s.id).map(r=>r.scientific||r.spoken).join('; ')}})),
+  ...p.records.filter(r=>r.lat!=null).map(r=>({type:'Feature',geometry:{type:'Point',coordinates:[r.lng,r.lat]},properties:{kind:'species',site:sName(r.siteId),family:r.family,scientific:r.scientific,authority_name:r.full,common:r.common,origin:r.origin,status:r.status,spoken:r.spoken,match:matchLabel(r),time:r.time}})),
+  ...p.tracks.filter(t=>t.pts.length>1).map(t=>({type:'Feature',geometry:{type:'LineString',coordinates:t.pts.map(q=>[q[1],q[0]])},properties:{kind:'track',name:t.name,start:t.start,end:t.end,length_km:+(trackLen(t)/1000).toFixed(3)}}))]}}
+
+/* ---------- start ---------- */
+let currentRef=null;
+render();if(site()||track())wake();
+(async()=>{try{const raw=await idbGet('ref');if(raw)currentRef=JSON.parse(raw)}catch(e){}
+  if(!currentRef){try{const res=await fetch(REF_URL,{cache:'no-cache'});if(res.ok){const raw=await res.text();currentRef=JSON.parse(raw);await idbSet('ref',raw);toast('Plant checklist downloaded and stored on this phone')}}catch(e){}}
+  buildIndex(currentRef,P().checklist);if(!currentRef)toast('No plant checklist loaded – Menu → Reference list',5000)})();
+}
+</script>
+</body>
+</html>
